@@ -1,0 +1,150 @@
+################################################################################
+#                                                                              #
+# ATAC-seq analysis pipeline                                                   #
+# 2014 Oct 19                                                                  #
+#                                                                              #
+# Fred P. Davis, HHMI Janelia                                                  #
+# davisf@janelia.hhmi.org                                                      #
+#                                                                              #
+################################################################################
+
+BEWARE: this is ALPHA-level software, check results carefully.
+
+Enclosed are SGE shell scripts, R scripts, and a perl script to process ATAC-seq
+data starting from paired-end FASTQ files and ending in alignments,
+visualization tracks, peak calls, nucleosome calls, and footprint predictions.
+
+# ------------------------------------------------------------------------------
+# External programs required                                             
+# ------------------------------------------------------------------------------
+* cutadapt
+* BOWTIE2
+* bedtools
+* samtools
+* Picard
+* wigToBigWig (ucscBL)
+* R
+* CENTIPEDE R package
+* mixtools R package
+* HOMER
+* DANPOS, DANTOOLS
+* FIMO (from MEME)
+
+
+# ------------------------------------------------------------------------------
+# Pipeline steps
+# ------------------------------------------------------------------------------
+The pipeline is composed of the following scripts that are submitted to an SGE
+cluster (with qsub):
+
+1. atac.step0.trim.SGE.sh - trim reads
+2. atac.step1.align.SGE.sh - align reads
+3. atac.step2.viz.SGE.sh - create visualization tracks and intermediate files
+4. atac.step3.nucleosome.SGE.sh - calls nucleosome positions
+5. atac.step4.HOMER_peak.SGE.sh - calls peaks
+6. atac.RUNONCE.fimo_scan.SGE.sh - scan genome sequence for motif matches.
+7. atac.step5a.CENTIPEDE_countends.SGE.sh - create input files for footprinting
+8. atac.step5b.CENTIPEDE_realstrand_run.SGE.sh - predict footprints
+
+
+The scripts are meant to be run in this order:
+
+1 -> 2 -> 3 --> 4, 5
+           \
+            \-> 7 -> 8
+            /
+6 ----------   (step #6, motif scanning, is only run once; not for each sample)
+
+
+# ------------------------------------------------------------------------------
+# Other files
+# ------------------------------------------------------------------------------
+1. txt2tasklist.pl - perl script that extracts information from a tab-delimited
+sample description file for use by the SGE scripts.
+
+The sample description file is a tab-delimited files, with column headers, that
+has at least these columns (order doesn't matter):
+
+* flowcell - flowcell identifier; needed by current data layout, see Configuring
+* raw_fastq_name_r1 - name of read 1 FASTQ file
+* raw_fastq_name_r2 - name of read 2 FASTQ file
+* sample_name - unique sample name, used in naming files created by the pipeline
+* dataset - descriptor for the sample series
+
+2. atac.step2.viz.R - script to create some initial plots.
+
+3. atac.step5b.CENTIPEDE_strandfix_run.R - R script to run CENTIPEDE.
+
+4. misc/ directory:
+4a. atacseq_fitLengthDistr.R - fit length distribution to determine length
+                               boundaries for different numbers of nucleosomes.
+
+4b. cutMonoNucFrags.pl - cut fragments into mono-nucleosome sized pieces.
+
+4c. format_DANPOS_pairedend_BED.pl - format input for DANPOS nucleosome calls.
+
+4d. getSubsampleBEDLengths.pl - samples BED file to fit length distribution.
+
+4e. scale_bed_rpm.pl - scales BED file to specified alignment depth.
+
+4f. splitBEDbyChrom.pl - split data for DANPOS run, otherwise too slow
+
+4g. transposon.fa - sequence to trim from raw data.
+
+4h. extract_meme_motif.pl - extracts numbered motifs from a MEME motif file
+
+
+5. You should download a motif set to use for the footprinting. I use MEME's
+motif database from http://ebi.edu.au/ftp/software/MEME/index.html
+
+You should specify this location in scripts #6 and 8 as MOTIFS_FN
+
+
+# ------------------------------------------------------------------------------
+# Configuring the pipeline
+# ------------------------------------------------------------------------------
+The pipeline makes several assumptions that you should check about data layout,
+where programs reside, etc. For example, it expects raw data in this directory
+layout: datadirectory/FLOWCELL/RAW_FASTQ_NAME_R1
+
+These assumptions should be clear by looking at the SGE scripts.
+
+
+* Once locations are specified properly, you have to adjust a few things
+to run the pipeline on a new series of data:
+
+1. Edit the SAMPLE_OPTION variable in each SGE script to specify the samples
+you'd like to process. eg, "dataset run201409-merge" would process all 
+samples in the SAMPLEINFO_FN sample description file that have "run201409-merge"
+in the datset column.
+
+2. Edit the "#$ -t" part of the SGE scripts to specify how many samples will
+be processed. for example for 6 samples: "$# -t 1-6"
+
+3. make sure to create all the necessary SGEOUT.* directories where the
+SGE scripts will create their output ( these are speciifed in the
+#$ -o and #$ -e lines in the SGE script headers)
+
+eg, the trimmer script will create output in SGEOUT.atac.step0.trim
+
+
+# ------------------------------------------------------------------------------
+# Running the pipeline
+# ------------------------------------------------------------------------------
+
+Then you just submit each script like this: qsub atac.step0.trim.SGE.sh
+
+For the first few runs, manually check the output from each step before
+qsub'ing the subsequent steps. Once you're comfortable that it runs properly,
+you can use the '-hold_jid' flag to automatically run the next step when the
+previous step is finished, like this:
+
+qsub -hold_jid PREVIOUSSTEP_JOBID nextstep.SGE.sh
+
+* Note, atac.step5b.CENTIPEDE_realstrand_run.SGE.sh is special in that you must
+specify the task number on the command line when submitting the script, like so:
+
+qsub -t 1 atac.step5b.CENTIPEDE_realstrand_run.SGE.sh
+
+This is because this script will spawn multiple runs to process subsets of the
+motifs in the database, for parallelization.
