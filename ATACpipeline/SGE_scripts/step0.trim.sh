@@ -23,7 +23,7 @@ NUMCPU=16
 # set RAWFASTQ2_FN=$rawfastq2_fns[$SGE_TASK_ID]
 # set NAME=$names[$SGE_TASK_ID]
 
-BASEDIR="/home/paxorus/test"
+BASEDIR="/home/paxorus/test.step0"
 FASTQF1="$BASEDIR/raw/Sample_EC_C_1.fastq.gz"
 FASTQF2="$BASEDIR/raw/Sample_EC_C_2.fastq.gz"
 
@@ -52,13 +52,13 @@ cd $scratchdir
 
 # run cutadapt with options
 if [ ! -e $TRIM_FASTQF1 ]; then
-    set curtime=`date`
+	 # set curtime=`date`
 	# fastqf -> tmp_fastq
-    echo "# Trimming FASTQ file - cutadapt step 1: $CUTADAPT_BIN $CUTADAPT_OPTIONS1 ($curtime)"
+	 echo "# Trimming FASTQ file - cutadapt step 1: $CUTADAPT_BIN $CUTADAPT_OPTIONS1 ($curtime)"
 	eval "$CUTADAPT_BIN $CUTADAPT_OPTIONS1"
 	# tmp_fastq -> trim_fastqf
-    echo "# Trimming FASTQ file - cutadapt step 2: $CUTADAPT_BIN $CUTADAPT_OPTIONS2 ($curtime)"
-    eval "$CUTADAPT_BIN $CUTADAPT_OPTIONS2"
+	 echo "# Trimming FASTQ file - cutadapt step 2: $CUTADAPT_BIN $CUTADAPT_OPTIONS2 ($curtime)"
+	 eval "$CUTADAPT_BIN $CUTADAPT_OPTIONS2"
 
 	if [ -e $TMP1_FASTQ ]; then
 		rm $TMP1_FASTQ
